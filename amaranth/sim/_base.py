@@ -6,6 +6,7 @@ class BaseProcess:
 
     runnable = False
     critical = False
+    violations = []
 
     def reset(self):
         raise NotImplementedError # :nocov:
