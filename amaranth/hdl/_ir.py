@@ -791,12 +791,12 @@ class NetlistEmitter:
         op = _nir.Operator(module_idx, operator=operator, inputs=inputs, src_loc=src_loc)
         return self.netlist.add_value_cell(op.width, op)
 
-    def emit_matches(self, module_idx: int, value: _nir.Value, patterns, *, src_loc):
+    def emit_matches(self, module_idx: int, value: _nir.Value, patterns, parallel, *, src_loc):
         key = module_idx, value, patterns, src_loc
         try:
             return self.matches_cache[key]
         except KeyError:
-            cell = _nir.Matches(module_idx, value=value, patterns=patterns, src_loc=src_loc)
+            cell = _nir.Matches(module_idx, value=value, patterns=patterns, src_loc=src_loc, parallel=parallel)
             net, = self.netlist.add_value_cell(1, cell)
             self.matches_cache[key] = net
             return net
@@ -964,7 +964,7 @@ class NetlistEmitter:
                 elems = []
                 for patterns, elem, in value.cases:
                     if patterns is not None:
-                        net = self.emit_matches(module_idx, test, patterns, src_loc=value.src_loc)
+                        net = self.emit_matches(module_idx, test, patterns, False, src_loc=value.src_loc)
                         conds.append(net)
                     else:
                         conds.append(_nir.Net.from_const(1))
@@ -1075,6 +1075,7 @@ class NetlistEmitter:
             for case_index in range(num_cases):
                 subcond = self.emit_matches(module_idx, offset,
                                             (to_binary(case_index, len(offset)),),
+                                            False,
                                             src_loc=lhs.src_loc)
                 conds.append(subcond)
             conds = self.emit_priority_match(module_idx, cond, _nir.Value(conds),
@@ -1094,7 +1095,7 @@ class NetlistEmitter:
             elems = []
             for patterns, elem in lhs.cases:
                 if patterns is not None:
-                    net = self.emit_matches(module_idx, test, patterns, src_loc=lhs.src_loc)
+                    net = self.emit_matches(module_idx, test, patterns, False, src_loc=lhs.src_loc)
                     conds.append(net)
                 else:
                     conds.append(_nir.Net.from_const(1))
@@ -1185,7 +1186,7 @@ class NetlistEmitter:
             case_stmts = []
             for patterns, stmts, case_src_loc in stmt.cases:
                 if patterns is not None:
-                    net = self.emit_matches(module_idx, test, patterns, src_loc=case_src_loc)
+                    net = self.emit_matches(module_idx, test, patterns, stmt.parallel, src_loc=case_src_loc)
                     conds.append(net)
                 else:
                     conds.append(_nir.Net.from_const(1))
@@ -1393,6 +1394,7 @@ class NetlistEmitter:
                 cond = self.emit_matches(driver.module_idx,
                                          self.emit_signal(driver.domain.rst),
                                          ("1",),
+                                         False,
                                          src_loc=driver.domain.rst.src_loc)
                 cond, = self.emit_priority_match(driver.module_idx, _nir.Net.from_const(1),
                                                  _nir.Value(cond),

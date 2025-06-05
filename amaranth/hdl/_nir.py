@@ -777,13 +777,14 @@ class Matches(Cell):
     value: Value
     patterns: tuple of str, each str contains '0', '1', '-'
     """
-    def __init__(self, module_idx, *, value, patterns, src_loc):
+    def __init__(self, module_idx, *, value, patterns, src_loc, parallel):
         super().__init__(module_idx, src_loc=src_loc)
 
         for pattern in patterns:
             assert len(pattern) == len(value)
         self.value = Value(value)
         self.patterns = tuple(patterns)
+        self.parallel = parallel
 
     def input_nets(self):
         return set(self.value)

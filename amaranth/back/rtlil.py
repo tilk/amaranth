@@ -313,8 +313,8 @@ class Process:
     def assign(self, lhs, rhs):
         self.contents.append(Assignment(lhs, rhs))
 
-    def switch(self, sel):
-        res = Switch(sel)
+    def switch(self, sel, parallel=False):
+        res = Switch(sel, parallel)
         self.contents.append(res)
         return res
 
@@ -338,9 +338,10 @@ class Assignment:
 
 
 class Switch:
-    def __init__(self, sel):
+    def __init__(self, sel, parallel=False):
         self.sel = sel
         self.cases = []
+        self.parallel = parallel
 
     def case(self, patterns):
         res = Case(patterns)
@@ -359,6 +360,8 @@ class Switch:
         return res
 
     def emit(self, line):
+        if self.parallel:
+            line("attribute \\parallel_case 1")
         line(f"switch {self.sel}")
         with line.indent():
             for case in self.cases:
@@ -374,8 +377,8 @@ class Case:
     def assign(self, lhs, rhs):
         self.contents.append(Assignment(lhs, rhs))
 
-    def switch(self, sel):
-        res = Switch(sel)
+    def switch(self, sel, parallel=False):
+        res = Switch(sel, parallel)
         self.contents.append(res)
         return res
 
@@ -752,15 +755,17 @@ class ModuleEmitter:
                     # 2. All Match cells driving a given PriorityMatch cell test the same value.
                     # Grab the tested value from a random Match cell.
                     test = _nir.Value()
+                    parallel = False
                     for net in priority_cell.inputs:
                         if net != _nir.Net.from_const(1):
                             matches_cell = self.netlist.cells[net.cell]
                             assert isinstance(matches_cell, _nir.Matches)
                             test = matches_cell.value
+                            parallel = matches_cell.parallel
                             break
                     # Now emit cases for all PriorityMatch inputs, in sequence. Consume as many
                     # assignments as possible along the way.
-                    switch = case.switch(self.sigspec(test))
+                    switch = case.switch(self.sigspec(test), parallel)
                     for bit, net in enumerate(priority_cell.inputs):
                         subcond = _nir.Net.from_cell(priority_cell_idx, bit)
                         if net == _nir.Net.from_const(1):
