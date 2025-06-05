@@ -2991,7 +2991,7 @@ class _LateBoundStatement(Statement):
 
 @final
 class Switch(Statement):
-    def __init__(self, test, cases, *, src_loc=None, src_loc_at=0):
+    def __init__(self, test, cases, parallel=False, *, src_loc=None, src_loc_at=0):
         if src_loc is None:
             super().__init__(src_loc_at=src_loc_at)
         else:
@@ -3000,6 +3000,7 @@ class Switch(Statement):
             self.src_loc = src_loc
 
         self._test  = Value.cast(test)
+        self._parallel = parallel
         new_cases = []
         for patterns, stmts, case_src_loc in cases:
             if patterns is not None:
@@ -3025,6 +3026,10 @@ class Switch(Statement):
     @property
     def cases(self):
         return self._cases
+
+    @property
+    def parallel(self):
+        return self._parallel
 
     def _lhs_signals(self):
         return union((stmts._lhs_signals() for _patterns, stmts, _src_loc in self.cases), start=SignalSet())

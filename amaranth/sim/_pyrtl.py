@@ -18,7 +18,7 @@ _USE_PATTERN_MATCHING = (sys.version_info >= (3, 10))
 
 
 class PyRTLProcess(BaseProcess):
-    __slots__ = ("is_comb", "runnable", "critical", "run")
+    __slots__ = ("is_comb", "runnable", "critical", "violations", "run")
 
     def __init__(self, *, is_comb):
         self.is_comb  = is_comb
@@ -28,6 +28,7 @@ class PyRTLProcess(BaseProcess):
     def reset(self):
         self.runnable = self.is_comb
         self.critical = False
+        self.violations = []
 
 
 class _PythonEmitter:
@@ -68,7 +69,7 @@ class _Compiler:
         self.state = state
         self.emitter = emitter
 
-    def _emit_switch(self, test, cases, case_handler):
+    def _emit_switch(self, test, cases, case_handler, parallel=False):
         if not cases:
             return
         use_match = _USE_PATTERN_MATCHING
@@ -78,7 +79,7 @@ class _Compiler:
             for pattern in patterns:
                 if "-" in pattern:
                     use_match = False
-        if use_match:
+        if use_match and not parallel:
             self.emitter.append(f"match {test}:")
             with self.emitter.indent():
                 for case in cases:
@@ -92,7 +93,8 @@ class _Compiler:
                     with self.emitter.indent():
                         case_handler(*case)
         else:
-            for index, case in enumerate(cases):
+            conditions = []
+            for case in cases:
                 patterns = case[0]
                 gen_checks = []
                 if patterns is None:
@@ -108,10 +110,24 @@ class _Compiler:
                         else:
                             value = int(pattern or "0", 2)
                             gen_checks.append(f"{value} == {test}")
+                conditions.append((case, ' or '.join(gen_checks)))
+            if parallel:
+                matched_var = self.emitter.gen_var("matched")
+                self.emitter.append(f"{matched_var} = []")
+                for index, (case, condition) in enumerate(conditions):
+                    patterns = case[0]
+                    if patterns is None:
+                        condition = f"not any({matched_var})"
+                    self.emitter.append(f"{matched_var}.append({condition})")
+                    conditions[index] = (case, f"{matched_var}[{index}]")
+                self.emitter.append(f"if sum({matched_var}) > 1:")
+                with self.emitter.indent():
+                    self.emitter.append("violations.append('parallel switch violation')")
+            for index, (case, condition) in enumerate(conditions):
                 if index == 0:
-                    self.emitter.append(f"if {' or '.join(gen_checks)}:")
+                    self.emitter.append(f"if {condition}:")
                 else:
-                    self.emitter.append(f"elif {' or '.join(gen_checks)}:")
+                    self.emitter.append(f"elif {condition}:")
                 with self.emitter.indent():
                     case_handler(*case)
 
@@ -390,7 +406,7 @@ class _StatementCompiler(StatementVisitor, _Compiler):
         gen_test = self.emitter.def_var("test", f"{(1 << len(stmt.test)) - 1:#x} & {gen_test_value}")
         def case_handler(pattern, stmt, src_loc):
             self(stmt)
-        self._emit_switch(gen_test, stmt.cases, case_handler)
+        self._emit_switch(gen_test, stmt.cases, case_handler, parallel=stmt.parallel)
 
     def emit_format(self, format):
         format_string = []
@@ -497,6 +513,7 @@ class _FragmentCompiler:
             emitter = _PythonEmitter()
             emitter.append(f"def run():")
             emitter._level += 1
+            emitter.append("violations.clear()")
 
             if domain_name == "comb":
                 for signal in domain_signals:
@@ -609,6 +626,7 @@ class _FragmentCompiler:
 
             exec_locals = {
                 "slots": self.state.slots,
+                "violations": domain_process.violations,
                 **_ValueCompiler.helpers,
                 **_StatementCompiler.helpers,
             }

@@ -661,6 +661,11 @@ class PySimEngine(BaseEngine):
                         assert False # :nocov:
 
             self._delta_cycles += 1
+        
+        # Check for violations
+        for process in self._processes:
+            if process.violations:
+                raise RuntimeError(str(process.violations))
 
     def advance(self):
         # Run triggers and processes until the simulation converges.

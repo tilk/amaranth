@@ -254,6 +254,7 @@ def resolve_statement(stmt):
                 (patterns, resolve_statements(stmts), src_loc)
                 for patterns, stmts, src_loc in stmt.cases
             ],
+            parallel=stmt.parallel,
             src_loc=stmt.src_loc,
         )
     elif isinstance(stmt, (Assign, Property, Print)):
@@ -331,7 +332,7 @@ class Module(_ModuleBuilderRoot, Elaboratable):
         return cond
 
     @_guardedcontextmanager("If")
-    def If(self, cond):
+    def If(self, cond, *, parallel=False):
         self._check_context("If", context=None)
         cond = self._check_signed_cond(cond)
         src_loc = tracer.get_src_loc(src_loc_at=1)
@@ -341,6 +342,7 @@ class Module(_ModuleBuilderRoot, Elaboratable):
             "bodies":   [],
             "src_loc":  src_loc,
             "src_locs": [],
+            "parallel": parallel
         })
         try:
             _outer_case, self._statements = self._statements, {}
@@ -394,13 +396,14 @@ class Module(_ModuleBuilderRoot, Elaboratable):
         self._pop_ctrl()
 
     @contextmanager
-    def Switch(self, test):
+    def Switch(self, test, *, parallel=False):
         self._check_context("Switch", context=None)
         switch_data = self._set_ctrl("Switch", {
             "test":    Value.cast(test),
             "cases":   [],
             "src_loc": tracer.get_src_loc(src_loc_at=1),
             "got_default": False,
+            "parallel": parallel
         })
         try:
             self._ctrl_context = "Switch"
@@ -559,7 +562,7 @@ class Module(_ModuleBuilderRoot, Elaboratable):
                     cases.append((match, if_case.get(domain, []), if_src_loc))
 
                 self._statements.setdefault(domain, []).append(Switch(Cat(tests), cases,
-                    src_loc=src_loc))
+                    parallel=data["parallel"], src_loc=src_loc))
 
         if name == "Switch":
             switch_test, switch_cases = data["test"], data["cases"]
@@ -575,7 +578,7 @@ class Module(_ModuleBuilderRoot, Elaboratable):
                     domain_cases.append((patterns, stmts.get(domain, []), case_src_loc))
 
                 self._statements.setdefault(domain, []).append(Switch(switch_test, domain_cases,
-                    src_loc=src_loc))
+                    parallel=data["parallel"], src_loc=src_loc))
 
         if name == "FSM":
             fsm_name, fsm_init, fsm_encoding, fsm_decoding, fsm_states, fsm_ongoing = \
@@ -613,7 +616,7 @@ class Module(_ModuleBuilderRoot, Elaboratable):
                         (fsm_encoding[name], stmts, fsm_state_src_locs[name])
                         for name, stmts in domain_states.items()
                     ],
-                    src_loc=src_loc))
+                    parallel=True, src_loc=src_loc))
 
     def _add_statement(self, assigns, domain, depth):
         while len(self._ctrl_stack) > self.domain._depth:

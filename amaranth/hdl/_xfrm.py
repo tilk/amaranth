@@ -219,7 +219,7 @@ class StatementTransformer(StatementVisitor):
 
     def on_Switch(self, stmt):
         cases = [(k, self.on_statement(s), l) for k, s, l in stmt.cases]
-        return Switch(self.on_value(stmt.test), cases)
+        return Switch(self.on_value(stmt.test), cases, parallel=stmt.parallel)
 
     def on_statements(self, stmts):
         return _StatementList(flatten(self.on_statement(stmt) for stmt in stmts))
